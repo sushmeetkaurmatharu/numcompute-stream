@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from numcompute_stream.base import check_X_y
+from numcompute_stream.base import check_X_y, encode_labels
 from numcompute_stream.tree import DecisionTreeClassifier
 
 
@@ -51,6 +51,7 @@ class EnsembleClassifier:
             est.partial_fit(X[idx], y[idx], classes=self.classes_)
 
     def partial_fit(self, X: np.ndarray, y: np.ndarray, classes: np.ndarray | None = None) -> EnsembleClassifier:
+        """Update each estimator with a bootstrap-resampled view of the incoming chunk."""
         X, y = check_X_y(X, y)
         if self.n_features_in_ is None:
             self.n_features_in_ = X.shape[1]
@@ -63,19 +64,27 @@ class EnsembleClassifier:
         return self
 
     def update(self, X: np.ndarray, y: np.ndarray, classes: np.ndarray | None = None) -> EnsembleClassifier:
+        """Alias for ``partial_fit``."""
         return self.partial_fit(X, y, classes=classes)
 
     def predict(self, X: np.ndarray) -> np.ndarray:
+        """Majority vote across estimators; returns shape ``(n_samples,)``."""
         if not self.estimators_ or self.classes_ is None:
             raise RuntimeError("EnsembleClassifier is not fitted.")
+        X = np.asarray(X, dtype=float)
         votes = np.stack([est.predict(X) for est in self.estimators_], axis=0)
-        out = np.empty(X.shape[0], dtype=self.classes_.dtype)
-        for i in range(X.shape[0]):
-            labels, counts = np.unique(votes[:, i], return_counts=True)
-            out[i] = labels[int(np.argmax(counts))]
-        return out
+        n_samples = X.shape[0]
+        n_classes = int(self.classes_.size)
+        vote_idx, _ = encode_labels(votes.ravel(), self.classes_)
+        vote_idx = vote_idx.reshape(votes.shape)
+        offsets = vote_idx * n_samples + np.arange(n_samples)
+        counts = np.bincount(offsets.ravel(), minlength=n_classes * n_samples).reshape(
+            n_classes, n_samples
+        ).T
+        return self.classes_[np.argmax(counts, axis=1)]
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        """Average class probabilities; returns shape ``(n_samples, n_classes)``."""
         if not self.estimators_ or self.classes_ is None:
             raise RuntimeError("EnsembleClassifier is not fitted.")
         return np.mean(np.stack([est.predict_proba(X) for est in self.estimators_], axis=0), axis=0)
@@ -85,6 +94,7 @@ class BaggingClassifier(EnsembleClassifier):
     """Bootstrap aggregating ensemble."""
 
     def partial_fit(self, X: np.ndarray, y: np.ndarray, classes: np.ndarray | None = None) -> BaggingClassifier:
+        """Update all bagged trees from the new chunk."""
         super().partial_fit(X, y, classes=classes)
         return self
 
@@ -123,6 +133,7 @@ class RandomForestClassifier(EnsembleClassifier):
         raise ValueError("max_features must be int, float, 'sqrt', or 'log2'.")
 
     def partial_fit(self, X: np.ndarray, y: np.ndarray, classes: np.ndarray | None = None) -> RandomForestClassifier:
+        """Update all trees using bootstrap rows plus per-tree feature subsampling."""
         X, y = check_X_y(X, y)
         if self.n_features_in_ is None:
             self.n_features_in_ = X.shape[1]
