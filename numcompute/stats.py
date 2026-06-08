@@ -12,33 +12,53 @@ class WelfordAccumulator:
         if n_features <= 0:
             raise ValueError("n_features must be positive.")
         self.n_features = n_features
-        self.count_: int = 0
+        self.count_ = np.zeros(n_features, dtype=int)
         self.mean_ = np.zeros(n_features, dtype=float)
         self.m2_ = np.zeros(n_features, dtype=float)
 
     def partial_fit(self, X: np.ndarray) -> WelfordAccumulator:
+        """Merge a batch of rows into running per-feature mean and variance."""
         X = np.asarray(X, dtype=float)
         if X.ndim != 2 or X.shape[1] != self.n_features:
             raise ValueError(f"X must have shape (n, {self.n_features}).")
-        for row in X:
-            mask = ~np.isnan(row)
-            if not np.any(mask):
-                continue
-            self.count_ += 1
-            delta = np.where(mask, row - self.mean_, 0.0)
-            self.mean_ += delta / self.count_
-            delta2 = np.where(mask, row - self.mean_, 0.0)
-            self.m2_ += delta * delta2
+        valid_mask = ~np.isnan(X)
+        n_valid = np.sum(valid_mask, axis=0)
+        if not np.any(n_valid):
+            return self
+        safe_X = np.where(valid_mask, X, 0.0)
+        batch_sum = np.sum(safe_X, axis=0)
+        batch_mean = np.divide(
+            batch_sum,
+            n_valid,
+            out=np.zeros(self.n_features, dtype=float),
+            where=n_valid > 0,
+        )
+        centered = np.where(valid_mask, X - batch_mean, 0.0)
+        batch_m2 = np.sum(centered * centered, axis=0)
+        n_a = self.count_.astype(float)
+        n_b = n_valid.astype(float)
+        active = n_b > 0
+        n = n_a + n_b
+        delta = batch_mean - self.mean_
+        self.mean_ = np.where(active, self.mean_ + delta * n_b / np.maximum(n, 1.0), self.mean_)
+        self.m2_ = np.where(
+            active,
+            self.m2_ + batch_m2 + (delta * delta) * n_a * n_b / np.maximum(n, 1.0),
+            self.m2_,
+        )
+        self.count_ = np.where(active, n.astype(int), self.count_)
         return self
 
     def update(self, X: np.ndarray) -> WelfordAccumulator:
+        """Alias for ``partial_fit`` (spec streaming API)."""
         return self.partial_fit(X)
 
     @property
     def var_(self) -> np.ndarray:
-        if self.count_ < 2:
-            return np.zeros(self.n_features, dtype=float)
-        return self.m2_ / (self.count_ - 1)
+        """Per-feature sample variance (ddof=1); zero when fewer than two samples."""
+        with np.errstate(divide="ignore", invalid="ignore"):
+            var = self.m2_ / np.maximum(self.count_ - 1, 1)
+        return np.where(self.count_ < 2, 0.0, var)
 
     @property
     def std_(self) -> np.ndarray:
