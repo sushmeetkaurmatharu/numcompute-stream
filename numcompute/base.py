@@ -38,23 +38,45 @@ def check_X_y(
 
 
 def encode_labels(y: np.ndarray, classes: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
-    """Map labels to contiguous integers ``0 .. n_classes-1``."""
+    """Map labels to contiguous integers ``0 .. n_classes-1``.
+
+    Parameters
+    ----------
+    y
+        Label vector of shape ``(n_samples,)``.
+    classes
+        Optional known class list; unseen labels in ``y`` raise ``ValueError``.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        Encoded integer labels and the class array used for mapping.
+    """
     y = np.asarray(y).ravel()
     if classes is None:
         classes = np.unique(y)
     else:
         classes = np.unique(np.asarray(classes))
-    lookup: dict[object, int] = {}
-    for i, c in enumerate(classes):
-        lookup[c] = i
-        if np.issubdtype(np.asarray(classes).dtype, np.number) and np.issubdtype(y.dtype, np.number):
-            lookup[float(c)] = i
-    encoded = np.empty(y.shape[0], dtype=int)
-    for idx, v in enumerate(y):
-        key: object = float(v) if np.issubdtype(y.dtype, np.number) else v
-        if key not in lookup:
-            raise ValueError(f"Unknown label {v!r} not in classes {classes.tolist()}.")
-        encoded[idx] = lookup[key]
+    if y.size == 0:
+        return np.empty(0, dtype=int), classes
+
+    numeric = np.issubdtype(classes.dtype, np.number) and np.issubdtype(y.dtype, np.number)
+    if numeric:
+        class_vals = classes.astype(float, copy=False)
+        y_num = y.astype(float, copy=False)
+        idx = np.searchsorted(class_vals, y_num)
+        safe_idx = np.clip(idx, 0, max(classes.size - 1, 0))
+        valid = (idx < classes.size) & (class_vals[safe_idx] == y_num)
+        encoded = idx.astype(int, copy=False)
+    else:
+        lookup = {label: i for i, label in enumerate(classes.tolist())}
+        encoded = np.fromiter((lookup.get(label, -1) for label in y), dtype=int, count=y.size)
+        valid = encoded >= 0
+
+    unknown = ~valid
+    if np.any(unknown):
+        bad = y[unknown][0]
+        raise ValueError(f"Unknown label {bad!r} not in classes {classes.tolist()}.")
     return encoded, classes
 
 
