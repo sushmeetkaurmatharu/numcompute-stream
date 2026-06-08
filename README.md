@@ -137,7 +137,3 @@ SUBMISSION.md
 Assignment2.2-specs.md
 pyproject.toml
 ```
-
-## Use of generative AI
-
-I used generative AI to help with test ideas and drafting documentation. I ran every script and test locally, read through the generated code, and adjusted design and wording so the submission reflects work I understand and can explain in the demo video.
