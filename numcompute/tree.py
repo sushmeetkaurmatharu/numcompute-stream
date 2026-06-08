@@ -131,6 +131,7 @@ class DecisionTreeClassifier:
         self.depth_ = 0
 
     def partial_fit(self, X: np.ndarray, y: np.ndarray, classes: np.ndarray | None = None) -> DecisionTreeClassifier:
+        """Incrementally grow the tree from chunk ``(X, y)``; buffers leaves until splits are valid."""
         X, y = check_X_y(X, y)
         if self.n_features_in_ is None:
             self.n_features_in_ = X.shape[1]
@@ -146,6 +147,7 @@ class DecisionTreeClassifier:
         return self
 
     def update(self, X: np.ndarray, y: np.ndarray, classes: np.ndarray | None = None) -> DecisionTreeClassifier:
+        """Alias for ``partial_fit``."""
         return self.partial_fit(X, y, classes=classes)
 
     def _feature_subset(self, n_features: int) -> np.ndarray:
@@ -195,13 +197,14 @@ class DecisionTreeClassifier:
         self.depth_ = max(self.depth_, depth + 1)
 
     def predict(self, X: np.ndarray) -> np.ndarray:
+        """Predict class labels for ``X`` of shape ``(n_samples, n_features)``."""
         if self.root_ is None or self.classes_ is None:
             raise RuntimeError("DecisionTreeClassifier is not fitted.")
         X = np.asarray(X, dtype=float)
-        preds = np.empty(X.shape[0], dtype=self.classes_.dtype)
-        for i, row in enumerate(X):
-            preds[i] = self.classes_[self._predict_row(self.root_, row)]
-        return preds
+        if X.ndim != 2:
+            raise ValueError("X must be 2-D with shape (n_samples, n_features).")
+        leaf_counts = self._leaf_class_counts(X)
+        return self.classes_[np.argmax(leaf_counts, axis=1)]
 
     def _predict_row(self, node: _TreeNode, x: np.ndarray) -> int:
         if node.is_leaf or node.left is None or node.right is None:
@@ -211,16 +214,45 @@ class DecisionTreeClassifier:
         return self._predict_row(node.right, x)
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        """Predict class probabilities for ``X`` with shape ``(n_samples, n_classes)`` output."""
         if self.root_ is None or self.classes_ is None:
             raise RuntimeError("DecisionTreeClassifier is not fitted.")
         X = np.asarray(X, dtype=float)
-        n_classes = self.classes_.size
-        proba = np.zeros((X.shape[0], n_classes), dtype=float)
-        for i, row in enumerate(X):
-            counts = self._node_counts(self.root_, row)
-            total = counts.sum()
-            proba[i] = counts / total if total > 0 else 1.0 / n_classes
+        if X.ndim != 2:
+            raise ValueError("X must be 2-D with shape (n_samples, n_features).")
+        n_classes = int(self.classes_.size)
+        counts = self._leaf_class_counts(X)
+        totals = counts.sum(axis=1, keepdims=True)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            proba = np.divide(counts, totals, out=np.zeros_like(counts), where=totals > 0)
+        empty_rows = totals.ravel() <= 0
+        if np.any(empty_rows):
+            proba[empty_rows] = 1.0 / n_classes
         return proba
+
+    def _leaf_class_counts(self, X: np.ndarray) -> np.ndarray:
+        """Traverse the tree in batches and return leaf class counts per sample."""
+        assert self.root_ is not None and self.classes_ is not None
+        n_samples = X.shape[0]
+        n_classes = int(self.classes_.size)
+        counts = np.zeros((n_samples, n_classes), dtype=float)
+        pending: list[tuple[_TreeNode, np.ndarray]] = [(self.root_, np.arange(n_samples, dtype=int))]
+
+        while pending:
+            node, idx = pending.pop()
+            if idx.size == 0:
+                continue
+            if node.is_leaf or node.left is None or node.right is None:
+                counts[idx] = node.class_counts
+                continue
+            feature_values = X[idx, node.feature]
+            left_mask = feature_values <= node.threshold
+            right_mask = ~left_mask
+            if np.any(left_mask):
+                pending.append((node.left, idx[left_mask]))
+            if np.any(right_mask):
+                pending.append((node.right, idx[right_mask]))
+        return counts
 
     def _node_counts(self, node: _TreeNode, x: np.ndarray) -> np.ndarray:
         if node.is_leaf or node.left is None or node.right is None:
