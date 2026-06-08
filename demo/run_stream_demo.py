@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from numcompute_stream.io import load_csv, split_features_labels, stream_chunks
 from numcompute_stream.pipeline import Pipeline
