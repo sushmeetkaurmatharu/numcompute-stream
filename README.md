@@ -129,6 +129,5 @@ scripts/
   export_video_script_docx.py
 README.md
 SUBMISSION.md
-Assignment2.2-specs.md
 pyproject.toml
 ```
