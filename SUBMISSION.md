@@ -1,8 +1,5 @@
 # Assignment 2.2 Submission Checklist
 
-**Student:** Sushmeet Kaur Matharu  
-**Course:** COMP 5004 Programming for AI and Machine Learning
-
 This file is my personal checklist before I upload to Canvas. It lists what is inside the repository and what I still submit as separate files on the learning management system.
 
 ## What is included in the code package
