@@ -1,9 +1,5 @@
 # NumCompute Stream (Assignment 2.2)
 
-**Course:** COMP 5004 Programming for AI and Machine Learning  
-**Student:** Sushmeet Kaur Matharu  
-**Task:** Programming Task 2 (Weeks 1 to 10)
-
 ## What this project is
 
 NumCompute Stream is my streaming machine learning framework for Assignment 2.2. I built it to extend the ideas from the NumCompute work in this course into a full pipeline that learns from data as it arrives in small batches, similar to how real online systems receive records over time.
