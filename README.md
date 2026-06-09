@@ -57,7 +57,6 @@ Provides `plot_metric_over_time`, `compare_models`, and `plot_predictions_vs_gro
 | Benchmark | `benchmark/benchmark_stream.py` |
 | Report and video | Submitted separately on Canvas |
 | Submission checklist | `SUBMISSION.md` |
-| Official spec copy | `Assignment2.2-specs.md` |
 
 ## How to set up the environment
 
